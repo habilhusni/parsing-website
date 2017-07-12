@@ -1,0 +1,25 @@
+{
+  "name": "cermati-test",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/habilhusni/cermati-test.git"
+  },
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/habilhusni/cermati-test/issues"
+  },
+  "homepage": "https://github.com/habilhusni/cermati-test#readme",
+  "dependencies": {
+    "bluebird": "^3.5.0",
+    "cheerio": "^1.0.0-rc.2",
+    "htmlparser2": "^3.9.2",
+    "request": "^2.81.0"
+  }
+}
