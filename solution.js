@@ -2,89 +2,158 @@
 const request 			= require('request'),
 			cheerio 			= require('cheerio'),
 			htmlparser2 	= require('htmlparser2'),
-			promise   		= require('bluebird');
+			promise   		= require('bluebird'),
+			asyncLoop 		= require('node-async-loop'),
+			fs						= require('fs');
 
-//Variables
-var docsCategories	= '',
-		docsPromo				= '',
-		promo   				= [],
-		categories 			= [];
+//Some variables
+var docsCategories 	= '',
+		categories 			= [],
+		promosUrl				= [],
+		realPromo				= [],
+		mainUrl					= 'https://m.bnizona.com/index.php/category/index/promo';
 
-var urlCategories 	= 'https://m.bnizona.com/index.php/category/index/promo',
-		urlPromo				= ['https://m.bnizona.com/promo/index/16',
-											 'https://m.bnizona.com/promo/index/17',
-											 'https://m.bnizona.com/promo/index/18',
-											 'https://m.bnizona.com/promo/index/19',
-											 'https://m.bnizona.com/promo/index/20',
-											 'https://m.bnizona.com/promo/index/21',
-											 'https://m.bnizona.com/promo/index/23',
-											 'https://m.bnizona.com/promo/index/24',
-											 'https://m.bnizona.com/promo/index/25',
-											 'https://m.bnizona.com/promo/index/26',
-											 'https://m.bnizona.com/promo/index/28',
-											 'https://m.bnizona.com/promo/index/34',
-											 'https://m.bnizona.com/promo/index/44',
-											 'https://m.bnizona.com/promo/index/45' ];
 
-//Get Categories from Url
-var getCategories 			= function(url) {
+
+
+
+/*----------------------------- FUNCTIONS -----------------------------------------*/
+
+//Scraping promo title from html
+var parsingCategories = function(docs) {
+	var domCat 		  = htmlparser2.parseDOM(docs),
+			$ 				  = cheerio.load(domCat);
+
+	var listCat     = $('.menu').find('li');//List of promo
+
+	//From each promo get it's title 
+	listCat.each(function(i) {
+		categories[i] = $(this).text();
+		promosUrl[i]	= $(this).find('a').attr('href');
+		let edge  		= categories[i].length - 2;
+		categories[i] = categories[i].slice(8, edge); 			
+	});
+}
+
+//Scraping content from each promo in html
+var parsingPromo = function(docs, promo) {
+	var 	domPro 		= htmlparser2.parseDOM(docs),
+				$pro 			= cheerio.load(domPro);
+
+	var listPro     = $pro('.list2').find('li'),//List of content of each promo
+			promoText		= [],
+			promoImage 	= [];
+
+	//From each content get it's title, text content, valid content, and imageUrl  
+	listPro.each(function(j) {
+		promoText[j] 	= $pro(this).text();
+		let ujung 		= promoText[j].length - 7;
+		promoText[j] 	= promoText[j].slice(23, ujung).replace(/(\n|\t)/g, ' ').replace(/  +/g, ',');
+		promo[j]			= promoText[j].split(',');
+
+		let img				= $pro(this).children('a').children('img');
+		promoImage[j]	= $pro(img).attr('src');
+		promo[j].push(promoImage[j]);			
+	});
+}
+
+//Get JSON result
+var parsingResult = function(categories, realPromo) {
+
+	//Converting each category and each content of promo into json
+	function contentToJson() {
+		let arrPromo = [];
+		let obj 		 = {};
+
+		for(let i=0; i<categories.length; i++) {
+			arrPromo[i]  = realPromo[i].map((promo, j) => {
+													let content  = promo.slice(1, (promo.length)-2).join(',');
+													var contents = {
+																					'Title': promo[0],
+																					'Content': content,
+																					'Valid': promo[(promo.length)-2],
+																					'ImageUrl': promo[(promo.length)-1]
+																				 }
+													return contents;							 
+												});
+
+			obj[categories[i]] = arrPromo[i];
+		}
+
+		return obj;
+	}
+
+	var json = contentToJson();
+
+	//Create file solution.json
+	fs.writeFile ("solution.json", JSON.stringify(json, null, '\t'), function(err) {
+    if (err) throw err;
+    console.log('Creating solution.json completed!\n');
+  });
+
+	return json;
+}
+
+//Looping the array of url request (asyncRequest)
+var loopTheAsync = function(arrUrl) {
+	asyncLoop(arrUrl, function (url, next) {
+	  request(url, function (error, response, body) {
+	  	if(error) {
+	  		next(error);
+	      return;
+	  	}
+
+			var docsPromo 	= body,
+			promo 					= [];
+
+			//Get content list from each promo
+			parsingPromo(docsPromo, promo);
+
+			//Contents of promo copied to realPromo array 
+			realPromo.push(promo);
+
+			next();
+		});
+	}, function(err) {
+	  if(err) {
+	    console.error('Error: ' + err.message);
+	    return;
+	  }
+
+	  //Getting data result and convert it to solution.json
+	  parsingResult(categories, realPromo);
+	});
+}
+
+//Parsing main url
+var getAll   = function(url) {
 	return new promise(function(resolve) {
-		request.get(url, function (error, response, body) {
-
-			docsCategories 		= body;
-
-				var 	domCat 		= htmlparser2.parseDOM(docsCategories),
-							$ 				= cheerio.load(domCat);
-
-				var listCat     = $('.menu').find('li');
-
-				listCat.each(function(i) {
-					categories[i] = $(this).text();
-					let edge  		= categories[i].length - 2;
-					categories[i] = categories[i].slice(8, edge); 			
-				});
 		
-				resolve(categories);
-		})
+		//Get request html
+		request(url, function (error, response, body) {
+
+			docsCategories 			= body;//Get body from url
+
+			//Get list of promo's title and promosUrl
+			parsingCategories(docsCategories);
+
+		  console.log('Getting url...');
+
+			resolve(promosUrl);
+
+		});
+
 	});
 }
 
-//Get One Promo from Each Categories
-var getPromo 						= function(url) {
-	return new promise(function(resolve) {
-		request.get(url, function (error, response, body) {
 
-			docsPromo 				= body;
 
-				var 	domPro 		= htmlparser2.parseDOM(docsPromo),
-							$pro 			= cheerio.load(domPro);
 
-				var listPro     = $pro('.list2').find('li'),
-						promoText		= [],
-						promoImage 	= [];
 
-				listPro.each(function(i) {
-					promoText[i] 	= $pro(this).text();
-					let ujung 		= promoText[i].length - 7;
-					promoText[i] 	= promoText[i].slice(23, ujung).replace(/(\n|\t)/g, ' ').replace(/  +/g, ',');
-					promo[i]			= promoText[i].split(',');
+/*---------------------------------- MAIN FUNCTION --------------------------------------*/
 
-					let img				= $pro(this).children('a').children('img');
-					promoImage[i]	= $pro(img).attr('src');
-					promo[i].push(promoImage[i]);			
-				});
-				
-				resolve(promo);	
-		})
+//Call the main content
+getAll(mainUrl)
+	.then(function(promosUrl) {
+		loopTheAsync(promosUrl);	
 	});
-}
-
-//Showing Categories and One Promo
-getCategories(urlCategories)
-	.then(setTimeout(function() {
-    console.log(categories);
-  }, 1000))
-  .then(getPromo(urlPromo[0]))
-  .then(setTimeout(function() {
-    console.log(promo);
-  }, 1000))
