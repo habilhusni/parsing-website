@@ -23,6 +23,7 @@
     "node-async-loop": "^1.2.2",
     "request": "^2.81.0",
     "stringstream": ">=0.0.6",
-    "cryptiles": ">=4.1.2"
+    "cryptiles": ">=4.1.2",
+    "hoek": ">=4.2.1"
   }
 }
